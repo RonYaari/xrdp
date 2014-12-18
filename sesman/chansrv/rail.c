@@ -287,10 +287,9 @@ rail_send_init(void)
     out_uint16_le(s, 0);        /* size, set later */
     out_uint32_le(s, 1);        /* build number */
     s_mark_end(s);
-    bytes = (int)((s->end - s->data) - 4);
+    bytes = (int)(s->end - s->data);// - 4);
     size_ptr[0] = bytes;
     size_ptr[1] = bytes >> 8;
-    bytes = (int)(s->end - s->data);
     send_channel_data(g_rail_chan_id, s->data, bytes);
     free_stream(s);
     return 0;
@@ -335,6 +334,7 @@ rail_init(void)
 {
     LOG(10, ("chansrv::rail_init:"));
     xcommon_init();
+    rail_startup();
 
     return 0;
 }
@@ -454,7 +454,7 @@ rail_process_exec(struct stream *s, int size)
     in_uint16_le(s, ExeOrFileLength);
     in_uint16_le(s, WorkingDirLength);
     in_uint16_le(s, ArgumentsLen);
-    ExeOrFile = read_uni(s, ExeOrFileLength);
+    ExeOrFile = read_uni(s, ExeOrFileLength / 2);
     WorkingDir = read_uni(s, WorkingDirLength);
     Arguments = read_uni(s, ArgumentsLen);
     LOG(10, ("  flags 0x%8.8x ExeOrFileLength %d WorkingDirLength %d "
@@ -464,7 +464,7 @@ rail_process_exec(struct stream *s, int size)
 
     if (g_strlen(ExeOrFile) > 0)
     {
-        rail_startup();
+//        rail_startup(); // TODO: delete me
 
         LOG(10, ("rail_process_exec: pre"));
         /* ask main thread to fork */
