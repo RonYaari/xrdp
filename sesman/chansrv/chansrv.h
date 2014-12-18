@@ -65,7 +65,7 @@ int APP_CC find_empty_slot_in_dvc_channels();
 struct xrdp_api_data * APP_CC struct_from_dvc_chan_id(tui32 dvc_chan_id);
 int remove_struct_with_chan_id(tui32 dvc_chan_id);
 
-#define LOG_LEVEL 5
+#define LOG_LEVEL 15
 
 #define LOG(_a, _params) \
     { \

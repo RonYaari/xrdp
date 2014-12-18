@@ -95,7 +95,7 @@ add_timeout(int msoffset, void (*callback)(void *data), void *data)
     struct timeout_obj *tobj;
     tui32 now;
 
-    LOG(10, ("add_timeout:"));
+    LOG(20, ("add_timeout:"));
     now = g_time3();
     tobj = g_malloc(sizeof(struct timeout_obj), 1);
     tobj->mstime = now + msoffset;
@@ -122,7 +122,7 @@ get_timeout(int *timeout)
     tui32 now;
     int ltimeout;
 
-    LOG(10, ("get_timeout:"));
+    LOG(20, ("get_timeout:"));
     ltimeout = *timeout;
     if (ltimeout < 1)
     {
@@ -134,7 +134,7 @@ get_timeout(int *timeout)
         now = g_time3();
         while (tobj != 0)
         {
-            LOG(10, ("  now %u tobj->mstime %u", now, tobj->mstime));
+            LOG(20, ("  now %u tobj->mstime %u", now, tobj->mstime));
             if (now < tobj->mstime)
             {
                 ltimeout = tobj->mstime - now;
@@ -144,7 +144,7 @@ get_timeout(int *timeout)
     }
     if (ltimeout > 0)
     {
-        LOG(10, ("  ltimeout %d", ltimeout));
+        LOG(20, ("  ltimeout %d", ltimeout));
         if (*timeout < 1)
         {
             *timeout = ltimeout;
@@ -170,7 +170,7 @@ check_timeout(void)
     int count;
     tui32 now;
 
-    LOG(10, ("check_timeout:"));
+    LOG(20, ("check_timeout:"));
     count = 0;
     tobj = g_timeout_head;
     if (tobj != 0)
@@ -210,7 +210,7 @@ check_timeout(void)
             }
         }
     }
-    LOG(10, ("  count %d", count));
+    LOG(20, ("  count %d", count));
     return 0;
 }
 
@@ -619,7 +619,7 @@ process_message_channel_data(struct stream *s)
     in_uint32_le(s, total_length);
     LOGM((LOG_LEVEL_DEBUG, "process_message_channel_data: chan_id %d "
           "chan_flags %d", chan_id, chan_flags));
-    LOG(10, ("process_message_channel_data"));
+    LOG(20, ("process_message_channel_data"));
     rv = send_channel_data_response_message();
 
     if (rv == 0)
