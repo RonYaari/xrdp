@@ -789,8 +789,8 @@ xrdp_mm_process_rail_create_window(struct xrdp_mm* self, struct stream* s)
     in_uint32_le(s, rwso.client_offset_y);
     in_uint32_le(s, rwso.client_area_width);
     in_uint32_le(s, rwso.client_area_height);
-    in_uint32_le(s, rwso.rp_content);
-    in_uint32_le(s, rwso.root_parent_handle);
+//    in_uint32_le(s, rwso.rp_content);
+//    in_uint32_le(s, rwso.root_parent_handle);
     in_uint32_le(s, rwso.window_offset_x);
     in_uint32_le(s, rwso.window_offset_y);
     in_uint32_le(s, rwso.window_client_delta_x);
@@ -978,6 +978,31 @@ xrdp_mm_process_rail_update_window_text(struct xrdp_mm* self, struct stream* s)
 
 /*****************************************************************************/
 /* returns error
+   process rail monitored desktp order */
+static int APP_CC
+xrdp_mm_process_monitored_desktop(struct xrdp_mm* self, struct stream* s)
+{
+    int size;
+    int flags;
+    int rv = 0;
+    int window_id;
+    struct rail_monitored_desktop_order rmdo;
+
+    g_writeln("xrdp_mm_process_monitored_desktop:");
+    g_memset(&rmdo, 0, sizeof(rmdo));
+
+    in_uint32_le(s, window_id);
+    in_uint32_le(s, flags);
+
+    in_uint32_le(s, size); /* title size */
+    rv = libxrdp_orders_init(self->wm->session);
+    rv = libxrdp_window_new_update(self->wm->session, window_id, &rmdo, flags);
+    rv = libxrdp_orders_send(self->wm->session);
+
+    return rv;
+}
+/*****************************************************************************/
+/* returns error
    process alternate secondary drawing orders for rail channel */
 static int APP_CC
 xrdp_mm_process_rail_drawing_orders(struct xrdp_mm* self, struct trans* trans)
@@ -1007,6 +1032,11 @@ xrdp_mm_process_rail_drawing_orders(struct xrdp_mm* self, struct trans* trans)
         case 8: /* update title info */
             rv = xrdp_mm_process_rail_update_window_text(self, s);
             break;
+        case 9: /* actively monitored */
+        	rv = xrdp_mm_process_monitored_desktop(self,s);
+        case 10:
+        	rv = xrdp_mm_process_rail_configure_window(self, s);
+        	break;
         default:
             break;
     }

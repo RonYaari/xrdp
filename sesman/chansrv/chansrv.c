@@ -346,8 +346,6 @@ send_channel_data(int chan_id, char *data, int size)
 {
     int index;
 
-    //g_writeln("send_channel_data chan_id %d size %d", chan_id, size);
-
     LOGM((LOG_LEVEL_DEBUG, "chansrv::send_channel_data: size %d", size));
 
     if (chan_id == -1)

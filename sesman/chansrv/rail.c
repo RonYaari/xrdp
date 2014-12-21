@@ -149,12 +149,23 @@ struct rail_window_data
 #define RAIL_EXT_STYLE_TOOLTIP (0x00000080 | 0x00000008)
 
 /* for normal desktop windows */
-#define RAIL_STYLE_NORMAL (0x00C00000 | 0x00080000 | 0x00040000 | 0x00010000 | 0x00020000)
-#define RAIL_EXT_STYLE_NORMAL (0x00040000)
+#define WS_CLIPCHILDREN		0x02000000L
+#define WS_CLIPSIBLINGS		0x04000000L
+#define WS_GROUP			0x00020000L
+#define WS_MAXIMIZEBOX		0x00010000L
+#define WS_SYSMENU			0x00080000L
+//#define RAIL_STYLE_NORMAL (0x00C00000 | 0x00080000 | 0x00040000 | 0x00010000 | 0x00020000)
+//#define RAIL_EXT_STYLE_NORMAL (0x00040000)
+#define RAIL_STYLE_NORMAL (WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_GROUP | WS_MAXIMIZEBOX | WS_SYSMENU)
+#define RAIL_EXT_STYLE_NORMAL (0x0)
 
 /* for dialogs */
 #define RAIL_STYLE_DIALOG (0x80000000)
 #define RAIL_EXT_STYLE_DIALOG (0x00040000)
+
+/* screen saver (in sys params) */
+#define SPI_SETSCREENSAVEACTIVE (0x00000011)
+#define SPI_SETSCREENSAVESECURE (0x00000077)
 
 static int APP_CC rail_win_get_state(Window win);
 static int APP_CC rail_create_window(Window window_id, Window owner_id);
@@ -273,13 +284,69 @@ is_window_valid_child_of_root(unsigned int window_id)
 
 /*****************************************************************************/
 static int APP_CC
-rail_send_init(void)
+rail_send_system_param(int system_parameter, int body)
 {
     struct stream *s;
     int bytes;
     char *size_ptr;
 
-    LOG(10, ("chansrv::rail_send_init:"));
+    LOG(10, ("chansrv::rail_send_system_param:"));
+    make_stream(s);
+    init_stream(s, 8182);
+    out_uint16_le(s, TS_RAIL_ORDER_SYSPARAM);
+    size_ptr = s->p;
+    out_uint16_le(s, 0);        /* size, set later */
+    out_uint32_le(s, system_parameter);        /* SystemParameter */
+    out_uint8(s, body);			/* Body */
+    s_mark_end(s);
+    bytes = (int)(s->end - s->data);
+    size_ptr[0] = bytes;
+    size_ptr[1] = bytes >> 8;
+    send_channel_data(g_rail_chan_id, s->data, bytes);
+    free_stream(s);
+    return 0;
+}
+
+/*****************************************************************************/
+static int APP_CC
+rail_send_exec_result(int flags, int exec_result, char* exec_name)
+{
+    struct stream *s;
+    int bytes;
+    int exec_name_len = 0;
+    char *size_ptr;
+
+    LOG(10, ("chansrv::rail_send_exec_result:"));
+    make_stream(s);
+    init_stream(s, 8182);
+    out_uint16_le(s, TS_RAIL_ORDER_EXEC_RESULT);
+    size_ptr = s->p;
+    out_uint16_le(s, 0);        /* size, set later */
+    out_uint16_le(s, flags);        /* Flags */
+    out_uint16_le(s, exec_result);        /* ExecResult */
+    out_uint32_le(s, 0);        /* RawResult */
+    out_uint16_le(s, 0);        /* pad */
+    exec_name_len = g_strlen(exec_name);
+    out_uint16_le(s, exec_name_len);        /* ExeOrFileLength */
+    out_uint8a(s, exec_name, exec_name_len);		/* ExeOrFile (var) */
+    s_mark_end(s);
+    bytes = (int)(s->end - s->data);
+    size_ptr[0] = bytes;
+    size_ptr[1] = bytes >> 8;
+    send_channel_data(g_rail_chan_id, s->data, bytes);
+    free_stream(s);
+    return 0;
+}
+
+/*****************************************************************************/
+static int APP_CC
+rail_send_handshake(void)
+{
+    struct stream *s;
+    int bytes;
+    char *size_ptr;
+
+    LOG(10, ("chansrv::rail_send_handshake:"));
     make_stream(s);
     init_stream(s, 8182);
     out_uint16_le(s, TS_RAIL_ORDER_HANDSHAKE);
@@ -287,7 +354,7 @@ rail_send_init(void)
     out_uint16_le(s, 0);        /* size, set later */
     out_uint32_le(s, 1);        /* build number */
     s_mark_end(s);
-    bytes = (int)(s->end - s->data);// - 4);
+    bytes = (int)(s->end - s->data);
     size_ptr[0] = bytes;
     size_ptr[1] = bytes >> 8;
     send_channel_data(g_rail_chan_id, s->data, bytes);
@@ -371,7 +438,7 @@ rail_startup()
 
     list_delete(g_window_list);
     g_window_list = list_create();
-    rail_send_init();
+    rail_send_handshake();
     g_rail_up = 1;
     g_rwd_atom = XInternAtom(g_display, "XRDP_RAIL_WINDOW_DATA", 0);
 
@@ -448,12 +515,15 @@ rail_process_exec(struct stream *s, int size)
     char *ExeOrFile;
     char *WorkingDir;
     char *Arguments;
+    char *exeOrFileRaw;
 
-    LOG(0, ("chansrv::rail_process_exec:"));
+    LOG(10, ("chansrv::rail_process_exec:"));
     in_uint16_le(s, flags);
     in_uint16_le(s, ExeOrFileLength);
     in_uint16_le(s, WorkingDirLength);
     in_uint16_le(s, ArgumentsLen);
+    exeOrFileRaw = (char*) g_malloc(ExeOrFileLength, 1);
+    g_memcpy(exeOrFileRaw, s->p, ExeOrFileLength);
     ExeOrFile = read_uni(s, ExeOrFileLength / 2);
     WorkingDir = read_uni(s, WorkingDirLength);
     Arguments = read_uni(s, ArgumentsLen);
@@ -476,6 +546,10 @@ rail_process_exec(struct stream *s, int size)
         LOG(10, ("rail_process_exec: post"));
     }
 
+    /* send exec result */
+    rail_send_exec_result(flags, 0, exeOrFileRaw);
+
+    g_free(exeOrFileRaw);
     g_free(ExeOrFile);
     g_free(WorkingDir);
     g_free(Arguments);
@@ -853,6 +927,9 @@ rail_restore_window(int window_id)
     return 0;
 }
 
+/*
+ * RAIL Static Virtual Channels Calls
+ */
 /*****************************************************************************/
 static int APP_CC
 rail_process_system_command(struct stream *s, int size)
@@ -920,6 +997,10 @@ rail_process_handshake(struct stream *s, int size)
     LOG(10, ("chansrv::rail_process_handshake:"));
     in_uint32_le(s, build_number);
     LOG(10, ("  build_number 0x%8.8x", build_number));
+
+    /* send sys params */
+    rail_send_system_param(SPI_SETSCREENSAVEACTIVE, 0);
+    rail_send_system_param(SPI_SETSCREENSAVESECURE, 0);
     return 0;
 }
 
@@ -1440,9 +1521,9 @@ rail_create_window(Window window_id, Window owner_id)
     out_uint32_le(s, width); /* client_area_width */
     out_uint32_le(s, height); /* client_area_height */
     flags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
-    out_uint32_le(s, 0); /* rp_content */
-    out_uint32_le(s, g_root_window); /* root_parent_handle */
-    flags |= WINDOW_ORDER_FIELD_ROOT_PARENT;
+//    out_uint32_le(s, 0); /* rp_content */
+//    out_uint32_le(s, g_root_window); /* root_parent_handle */
+//    flags |= WINDOW_ORDER_FIELD_ROOT_PARENT;
     out_uint32_le(s, x); /* window_offset_x */
     out_uint32_le(s, y); /* window_offset_y */
     flags |= WINDOW_ORDER_FIELD_WND_OFFSET;
@@ -1794,7 +1875,7 @@ rail_xevent(void *xevent)
     XWindowAttributes wnd_attributes;
     char* prop_name;
 
-    LOG(10, ("chansrv::rail_xevent:"));
+    LOG(10, ("chansrv::rail_xevent: %d", ((XEvent *) xevent)->type));
 
     if (!g_rail_up)
     {
@@ -1823,7 +1904,7 @@ rail_xevent(void *xevent)
                 XGetWindowAttributes(g_display, lxevent->xproperty.window, &wnd_attributes);
                 if (wnd_attributes.map_state == IsViewable)
                 {
-                    rail_win_send_text(lxevent->xproperty.window);
+//                    rail_win_send_text(lxevent->xproperty.window);
                     rv = 0;
                 }
             }
@@ -1844,7 +1925,7 @@ rail_xevent(void *xevent)
                              lxevent->xconfigurerequest.window,
                              lxevent->xconfigurerequest.value_mask,
                              &xwc);
-            rail_configure_request_window(&(lxevent->xconfigurerequest));
+//            rail_configure_request_window(&(lxevent->xconfigurerequest));
             rv = 0;
             break;
 
@@ -1864,7 +1945,7 @@ rail_xevent(void *xevent)
             index = list_index_of(g_window_list, lxevent->xdestroywindow.window);
             if (index >= 0)
             {
-                rail_destroy_window(lxevent->xdestroywindow.window);
+//                rail_destroy_window(lxevent->xdestroywindow.window);
                 list_remove_item(g_window_list, index);
             }
             rv = 0;
@@ -1895,7 +1976,7 @@ rail_xevent(void *xevent)
                 if (!wnd_attributes.override_redirect)
                 {
                     rail_win_set_state(lxevent->xmap.window, 0x1); /* NormalState */
-                    rail_win_send_text(lxevent->xmap.window);
+//                    rail_win_send_text(lxevent->xmap.window);
                 }
                 rv = 0;
             }
@@ -1917,10 +1998,10 @@ rail_xevent(void *xevent)
                     if (wnd_attributes.override_redirect)
                     {
                         // remove popups
-                        rail_destroy_window(lxevent->xunmap.window);
+//                        rail_destroy_window(lxevent->xunmap.window);
                         list_remove_item(g_window_list, index);
                     } else {
-                    rail_show_window(lxevent->xunmap.window, 0x0);
+//                    	rail_show_window(lxevent->xunmap.window, 0x0);
                     }
 
                     rv = 0;
@@ -1990,7 +2071,7 @@ rail_xevent(void *xevent)
                 index = list_index_of(g_window_list, lxevent->xreparent.window);
                 if (index >= 0)
                 {
-                    rail_destroy_window(lxevent->xreparent.window);
+//                    rail_destroy_window(lxevent->xreparent.window);
                     list_remove_item(g_window_list, index);
                 }
             }
